@@ -39,6 +39,20 @@ def test_experiment_produces_expected_summary_shape():
     }
     assert comparison["mlp_neural_network"]["test_records"] == len(details)
     assert comparison["policy_model"] == "logistic_regression_baseline"
+    recovery_scenarios = report["recovery_assumption_sensitivity"]["scenarios"]
+    assert [scenario["assumed_recovery_rate"] for scenario in recovery_scenarios] == [
+        0.20,
+        0.40,
+        0.60,
+    ]
+    assert all(len(scenario["results"]) == 2 for scenario in recovery_scenarios)
+    causal_experiment = report["randomized_pricing_experiment"]
+    assert causal_experiment["arms"]["control"]["applications"] + (
+        causal_experiment["arms"]["treatment"]["applications"]
+    ) == len(details)
+    assert "bootstrap_95pct_ci_lower" in causal_experiment[
+        "intent_to_treat_effects"
+    ]["acceptance_rate"]
     json.loads(report_as_json(report))
 
 

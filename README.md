@@ -25,6 +25,8 @@ Both policies route cases near the configured risk boundary to a human-review qu
 
 - ROC AUC and Brier score for default predictions at the randomized historical offer rates in a held-out test set.
 - Side-by-side logistic regression and MLP held-out metrics; model metrics are not policy outcomes.
+- A separate seeded 1:1 randomized synthetic pricing experiment: intention-to-treat differences in acceptance and contribution per offer, with bootstrap 95% confidence intervals and a known-simulator benchmark.
+- Policy sensitivity across alternative assumed recovery rates (implemented as changes to loss-given-default); this does not estimate collections effectiveness.
 - Counts of approvals, counteroffers, declines, and human reviews for each policy.
 - Expected acceptances, defaults, profit, and loss rate under the synthetic simulator at each proposed rate.
 - Per-application reason codes, policy version, predicted outcome score, and proposed rate in a local synthetic detail file.
@@ -34,6 +36,8 @@ The expected policy outcomes use synthetic simulator probabilities; they are not
 ## Architecture
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data flow, module responsibilities, data contract, algorithm overview, and computational shape.
+
+See [CAUSAL_EVALUATION.md](./CAUSAL_EVALUATION.md) for the experimental design, effect estimands, bootstrap method, post-treatment selection caveat, and limitations.
 
 ## Run on Windows
 
@@ -74,7 +78,9 @@ See [SECURITY_DEMO.md](./SECURITY_DEMO.md) for scope and limitations. The demons
 
 ## Example result
 
-With `--n 1000 --seed 42`, the 300-record test split produced logistic-regression ROC AUC `0.822` and Brier score `0.153`; the MLP produced ROC AUC `0.806` and Brier score `0.162` at the randomized historical rates. For this seed and synthetic generator, the simpler logistic baseline scored better on both reported metrics. The fixed-rate policy issued 90 offers, routed 48 applications to human review, and had simulated expected contribution of `28.7` thousand units. The risk-aware policy issued 123 offers, routed 12 to review, and had simulated expected contribution of `38.2` thousand units. These are outcomes under the known toy simulator only; they do not demonstrate real-world profitability, fairness, affordability, or safety.
+With `--n 1000 --seed 42`, the 300-record test split produced logistic-regression ROC AUC `0.822` and Brier score `0.153`; the MLP produced ROC AUC `0.806` and Brier score `0.162` at the randomized historical rates. For this seed and synthetic generator, the simpler logistic baseline scored better on both reported metrics. The fixed-rate policy issued 90 offers, routed 48 applications to human review, and had simulated expected contribution of `28.7` thousand units. The risk-aware policy issued 123 offers, routed 12 to review, and had simulated expected contribution of `38.2` thousand units.
+
+In the separate randomized experiment, assignment to a 24% rather than 12% offer produced an acceptance-rate ITT estimate of `-38.0` percentage points (bootstrap 95% CI: `-48.0` to `-28.7` points); the known simulator finite-population effect was `-34.0` points. The contribution difference was `-0.498` thousand units per offer (95% CI: `-1.361` to `0.316`), which includes zero. At assumed recovery rates of 20%, 40%, and 60%, the risk-aware policy's expected contribution was `25.8`, `42.9`, and `73.9` thousand synthetic units, respectively. These results demonstrate analysis of the specified simulator, not effects, recovery performance, profitability, fairness, affordability, or safety in a real portfolio.
 
 ## Assumptions and formulas
 
@@ -86,3 +92,6 @@ expected contribution = a * P * ((1 - p) * r - p * LGD - f)
 
 The acceptance response and default response to price are intentionally simple synthetic functions. The policy maximizes estimated expected contribution among the configured discrete rates, subject to a risk limit and a positive-contribution condition. Rates, thresholds, loss severity, funding cost, and policy version are explicit in `PolicyConfig`; changing them changes the simulated results.
 
+## Related SQL work
+
+For cohort, roll-rate, delinquency migration, and expected-loss queries in PostgreSQL, see [Credit Portfolio Analytics & Cohort Risk](https://github.com/jessicaandradeg-dot/credit-cohort-analytics-sql). This companion project is separate from the Python simulator.

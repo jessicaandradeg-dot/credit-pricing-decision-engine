@@ -25,6 +25,10 @@ Input safeguards → fixed-rate / risk-aware policy
        ↓
 Reason-coded decisions → synthetic-oracle policy evaluation
        ↓
+Recovery-rate assumption sensitivity
+       ↓
+Seeded randomized pricing experiment → ITT and bootstrap intervals
+       ↓
 JSON summary and CSV detail
 ```
 
@@ -38,6 +42,7 @@ The neural network is a comparison model only. The pricing policies continue usi
 | `model.py` | Validate training/prediction inputs; fit the standardized logistic and MLP estimators. |
 | `policy.py` | Validate decision inputs, apply fixed-rate or risk-aware rules, and attach reasons/version. |
 | `experiment.py` | Split data, fit models, compare held-out classification metrics, evaluate policies with the synthetic oracle, and serialize reports. |
+| `causal_pricing.py` | Randomize a held-out synthetic cohort, simulate assigned-arm outcomes, estimate ITT differences, bootstrap intervals, and compare against the simulator's known finite-population effect. |
 | `security_demo.py` | Demonstrate authenticated symmetric encryption and asymmetric wrapping of a one-time key. |
 | `crypto_demo.py` | Run a local round trip over a fixed fictional sample and print metadata only. |
 
@@ -56,6 +61,8 @@ Let `n` be the number of applications, `p` the number of model features, `m` the
 - MLP training is approximately `O(e n (p h1 + h1 h2))`; inference is approximately `O(n (p h1 + h1 h2))`.
 - Risk-aware pricing evaluates the model across `m` candidate rates and computes a feasible maximum per application: approximately `O(m n p)` for the logistic model, plus `O(n m)` policy selection.
 - The MLP comparison is not called by policy decisions; it adds one training fit and one held-out evaluation.
+- The causal experiment simulates two potential outcomes per application to expose an oracle finite-population effect, but estimates ITT from the independently randomized assigned arms. Bootstrap work is approximately `O(B n)` where `B` is the number of resamples.
+- Recovery sensitivity reruns the policies for a small fixed grid of assumed recovery rates. It changes loss-given-default and is not a fitted model of collection outcomes.
 
 These are high-level operation counts for explaining design, not performance benchmarks.
 

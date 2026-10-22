@@ -1,13 +1,14 @@
 """Train, compare, and evaluate synthetic credit decision policies."""
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 
+from .causal_pricing import run_randomized_pricing_experiment
 from .data import (
     FEATURES,
     OFFERED_RATE_COLUMN,
@@ -133,6 +134,41 @@ def run_experiment(
         evaluate_policy(test, decisions, config, name)
         for name, decisions in decisions_by_policy.items()
     ]
+    recovery_sensitivity: list[dict[str, object]] = []
+    for recovery_rate in (0.20, 0.40, 0.60):
+        scenario_config = replace(
+            config,
+            loss_given_default=1.0 - recovery_rate,
+        )
+        scenario_decisions = {
+            "fixed_rate_baseline": decide_fixed_rate(
+                test,
+                model,
+                scenario_config,
+            ),
+            "risk_aware_pricing": decide_risk_aware_pricing(
+                test,
+                model,
+                scenario_config,
+            ),
+        }
+        recovery_sensitivity.append(
+            {
+                "assumed_recovery_rate": recovery_rate,
+                "assumed_loss_given_default": scenario_config.loss_given_default,
+                "results": [
+                    evaluate_policy(test, decisions, scenario_config, name)
+                    for name, decisions in scenario_decisions.items()
+                ],
+            }
+        )
+    causal_pricing_report, causal_pricing_detail = (
+        run_randomized_pricing_experiment(
+            test,
+            config=config,
+            random_state=random_state,
+        )
+    )
 
     observed_rate = test[OFFERED_RATE_COLUMN].to_numpy(dtype=float)
     predicted_default = model.predict_default_probability(test, observed_rate)
@@ -174,6 +210,13 @@ def run_experiment(
             [detail.reset_index(drop=True), renamed.reset_index(drop=True)],
             axis=1,
         )
+    causal_columns = causal_pricing_detail.drop(columns="application_id").add_prefix(
+        "causal_pricing_"
+    )
+    detail = pd.concat(
+        [detail.reset_index(drop=True), causal_columns.reset_index(drop=True)],
+        axis=1,
+    )
 
     report: dict[str, object] = {
         "notice": (
@@ -198,6 +241,14 @@ def run_experiment(
             ),
             "results": policy_metrics,
         },
+        "recovery_assumption_sensitivity": {
+            "method": (
+                "Recovery assumptions vary through loss-given-default. This is "
+                "scenario sensitivity, not a fitted collections or recovery model."
+            ),
+            "scenarios": recovery_sensitivity,
+        },
+        "randomized_pricing_experiment": causal_pricing_report,
     }
     return report, detail
 
