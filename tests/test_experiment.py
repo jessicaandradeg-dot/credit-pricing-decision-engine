@@ -31,6 +31,14 @@ def test_experiment_produces_expected_summary_shape():
     }
     assert len(report["policy_evaluation"]["results"]) == 2
     assert report["policy_evaluation"]["results"][0]["counteroffers"] > 0
+    comparison = report["model_comparison_at_randomized_historical_rates"]
+    assert set(comparison) == {
+        "logistic_regression_baseline",
+        "mlp_neural_network",
+        "policy_model",
+    }
+    assert comparison["mlp_neural_network"]["test_records"] == len(details)
+    assert comparison["policy_model"] == "logistic_regression_baseline"
     json.loads(report_as_json(report))
 
 

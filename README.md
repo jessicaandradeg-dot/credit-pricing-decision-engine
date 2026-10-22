@@ -2,10 +2,12 @@
 
 **An offline research and portfolio prototype using synthetic applications. It is not a lending product or a credit decision system.**
 
-This project compares two deliberately simple policies:
+This project compares two deliberately simple policies and two default-risk model families:
 
 1. **Fixed-rate baseline:** evaluates one fixed rate and applies an explicit risk limit.
 2. **Risk-aware pricing:** evaluates a small rate grid, chooses a rate with positive estimated expected contribution below the risk limit, and can issue a counteroffer.
+3. **Logistic regression baseline:** the original standardized linear classifier used by both policies.
+4. **MLP neural-network comparison:** a standardized two-hidden-layer classifier evaluated on the same held-out synthetic records. This model is reported for learning only; the policies continue to use logistic regression.
 
 Both policies route cases near the configured risk boundary to a human-review queue. A synthetic debt-to-income safeguard also routes high-DTI cases to review. All decisions carry a reason code and policy version.
 
@@ -22,6 +24,7 @@ Both policies route cases near the configured risk boundary to a human-review qu
 ## What the experiment reports
 
 - ROC AUC and Brier score for default predictions at the randomized historical offer rates in a held-out test set.
+- Side-by-side logistic regression and MLP held-out metrics; model metrics are not policy outcomes.
 - Counts of approvals, counteroffers, declines, and human reviews for each policy.
 - Expected acceptances, defaults, profit, and loss rate under the synthetic simulator at each proposed rate.
 - Per-application reason codes, policy version, predicted outcome score, and proposed rate in a local synthetic detail file.
@@ -30,26 +33,7 @@ The expected policy outcomes use synthetic simulator probabilities; they are not
 
 ## Architecture
 
-```text
-Synthetic application generator
-            |
-            +--> randomized historical offer and simulated default
-            |             |
-            |             +--> train/test split --> logistic default-risk model
-            |
-            +--> held-out applications --> fixed-rate policy
-                                 `-------> risk-aware pricing policy
-                                              |
-                                              +--> explicit rules, reasons, version
-                                              +--> synthetic oracle evaluation
-```
-
-Main modules:
-
-- `data.py`: synthetic applicant features, randomized historical rates, default and acceptance functions.
-- `model.py`: risk model and probability validation.
-- `policy.py`: validated assumptions, fixed-rate baseline, risk-aware pricing, counteroffers, and human-review routing.
-- `experiment.py`: deterministic train/test run, policy evaluation, and reports.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data flow, module responsibilities, data contract, algorithm overview, and computational shape.
 
 ## Run on Windows
 
@@ -72,9 +56,25 @@ python -m credit_decision --n 1500 --seed 11
 
 The command writes `reports/experiment_summary.json` and `reports/synthetic_test_decisions.csv`. These generated reports are ignored by Git. Review outputs locally before choosing which, if any, to publish.
 
+## Neural model comparison
+
+The experiment reports logistic-regression and MLP metrics using the same stratified test set and historical offer rates. The MLP uses `StandardScaler` and hidden layers `(32, 16)` with ReLU activation and a fixed random seed. It is not used to make policy decisions, and a higher score in this synthetic experiment would not establish that a neural model is preferable in practice.
+
+## Symmetric and asymmetric cryptography
+
+The separate educational example demonstrates AES-256-GCM payload encryption and RSA-OAEP/SHA-256 wrapping of an ephemeral AES key:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m credit_decision.crypto_demo
+python -m pytest tests/test_security_demo.py
+```
+
+See [SECURITY_DEMO.md](./SECURITY_DEMO.md) for scope and limitations. The demonstration uses only fictional bytes and ephemeral in-memory keys; it is not production security or a claim that the credit simulator encrypts data at rest.
+
 ## Example result
 
-With `--n 1000 --seed 42`, the 300-record test split produced ROC AUC `0.822` and Brier score `0.153` for predictions at the randomized historical rates. The fixed-rate policy issued 90 offers, routed 48 applications to human review, and had simulated expected contribution of `28.7` thousand units. The risk-aware policy issued 123 offers, routed 12 to review, and had simulated expected contribution of `38.2` thousand units. These are outcomes under the known toy simulator only; they do not demonstrate real-world profitability, fairness, affordability, or safety.
+With `--n 1000 --seed 42`, the 300-record test split produced logistic-regression ROC AUC `0.822` and Brier score `0.153`; the MLP produced ROC AUC `0.806` and Brier score `0.162` at the randomized historical rates. For this seed and synthetic generator, the simpler logistic baseline scored better on both reported metrics. The fixed-rate policy issued 90 offers, routed 48 applications to human review, and had simulated expected contribution of `28.7` thousand units. The risk-aware policy issued 123 offers, routed 12 to review, and had simulated expected contribution of `38.2` thousand units. These are outcomes under the known toy simulator only; they do not demonstrate real-world profitability, fairness, affordability, or safety.
 
 ## Assumptions and formulas
 

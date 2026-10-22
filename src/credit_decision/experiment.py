@@ -16,7 +16,7 @@ from .data import (
     synthetic_acceptance_probability,
     synthetic_default_probability,
 )
-from .model import DefaultRiskModel
+from .model import DefaultRiskModel, NeuralDefaultRiskModel
 from .policy import (
     PolicyConfig,
     decide_fixed_rate,
@@ -123,6 +123,7 @@ def run_experiment(
     train = train.reset_index(drop=True)
     test = test.reset_index(drop=True)
     model = DefaultRiskModel.fit(train)
+    neural_model = NeuralDefaultRiskModel.fit(train)
 
     decisions_by_policy = {
         "fixed_rate_baseline": decide_fixed_rate(test, model, config),
@@ -135,10 +136,23 @@ def run_experiment(
 
     observed_rate = test[OFFERED_RATE_COLUMN].to_numpy(dtype=float)
     predicted_default = model.predict_default_probability(test, observed_rate)
+    neural_predicted_default = neural_model.predict_default_probability(
+        test,
+        observed_rate,
+    )
     classification_metrics = {
         "roc_auc": float(roc_auc_score(test[OUTCOME_COLUMN], predicted_default)),
         "brier_score": float(
             brier_score_loss(test[OUTCOME_COLUMN], predicted_default)
+        ),
+        "test_records": len(test),
+    }
+    neural_classification_metrics = {
+        "roc_auc": float(
+            roc_auc_score(test[OUTCOME_COLUMN], neural_predicted_default)
+        ),
+        "brier_score": float(
+            brier_score_loss(test[OUTCOME_COLUMN], neural_predicted_default)
         ),
         "test_records": len(test),
     }
@@ -171,6 +185,11 @@ def run_experiment(
         "test_records": len(test),
         "assumptions": asdict(config),
         "model_quality_at_randomized_historical_rates": classification_metrics,
+        "model_comparison_at_randomized_historical_rates": {
+            "logistic_regression_baseline": classification_metrics,
+            "mlp_neural_network": neural_classification_metrics,
+            "policy_model": "logistic_regression_baseline",
+        },
         "policy_evaluation": {
             "method": (
                 "Expected outcomes use the known synthetic simulator at each "
