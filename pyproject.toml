@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "credit-pricing-decision-engine"
-version = "0.1.0"
+version = "0.3.0"
 description = "Synthetic credit-pricing decision and policy evaluation prototype"
 requires-python = ">=3.10"
 dependencies = [

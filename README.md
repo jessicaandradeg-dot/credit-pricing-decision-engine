@@ -9,7 +9,7 @@ This project compares two deliberately simple policies and two default-risk mode
 3. **Logistic regression baseline:** the original standardized linear classifier used by both policies.
 4. **MLP neural-network comparison:** a standardized two-hidden-layer classifier evaluated on the same held-out synthetic records. This model is reported for learning only; the policies continue to use logistic regression.
 
-Both policies route cases near the configured risk boundary to a human-review queue. A synthetic debt-to-income safeguard also routes high-DTI cases to review. All decisions carry a reason code and policy version.
+Both policies identify cases near the configured risk boundary for review. A capacity-aware routing objective selects positive-value cases subject to a review limit, subtracts an explicit human-review cost, and declines cases that cannot be safely routed within capacity. All decisions carry a reason code and policy version.
 
 ## Safety, privacy, and limitations
 
@@ -28,8 +28,10 @@ Both policies route cases near the configured risk boundary to a human-review qu
 - A separate seeded 1:1 randomized synthetic pricing experiment: intention-to-treat differences in acceptance and contribution per offer, with bootstrap 95% confidence intervals and a known-simulator benchmark.
 - Policy sensitivity across alternative assumed recovery rates (implemented as changes to loss-given-default); this does not estimate collections effectiveness.
 - Counts of approvals, counteroffers, declines, and human reviews for each policy.
+- Review capacity, per-case review cost, total review cost, and net expected contribution.
+- A depth-3 decision-tree surrogate for counteroffer/review exceptions, with held-out rates by risk band, automatic-pass coverage, exception recall, and a clearly labeled counterfactual contribution-loss proxy.
 - Expected acceptances, defaults, profit, and loss rate under the synthetic simulator at each proposed rate.
-- Per-application reason codes, policy version, predicted outcome score, and proposed rate in a local synthetic detail file.
+- Per-application reason codes, policy version, predicted outcome score, and proposed rate in local synthetic CSV and SQLite detail files.
 
 The expected policy outcomes use synthetic simulator probabilities; they are not sampled real-world outcomes. No protected characteristics are generated or used in decisions.
 
@@ -58,15 +60,15 @@ Run a smaller deterministic experiment:
 python -m credit_decision --n 1500 --seed 11
 ```
 
-The command writes `reports/experiment_summary.json` and `reports/synthetic_test_decisions.csv`. These generated reports are ignored by Git. Review outputs locally before choosing which, if any, to publish.
+The command writes `reports/experiment_summary.json`, `reports/synthetic_test_decisions.csv`, and `reports/decisionbot.sqlite`. These generated reports are ignored by Git. Review outputs locally before choosing which, if any, to publish. Override the database location with `--database-path`.
 
 ## Neural model comparison
 
 The experiment reports logistic-regression and MLP metrics using the same stratified test set and historical offer rates. The MLP uses `StandardScaler` and hidden layers `(32, 16)` with ReLU activation and a fixed random seed. It is not used to make policy decisions, and a higher score in this synthetic experiment would not establish that a neural model is preferable in practice.
 
-## Symmetric and asymmetric cryptography
+## Educational encryption and signatures
 
-The separate educational example demonstrates AES-256-GCM payload encryption and RSA-OAEP/SHA-256 wrapping of an ephemeral AES key:
+The separate educational example demonstrates AES-256-GCM payload encryption, RSA-OAEP/SHA-256 wrapping of an ephemeral AES key, and RSA-PSS/SHA-256 message signatures:
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -74,13 +76,57 @@ python -m credit_decision.crypto_demo
 python -m pytest tests/test_security_demo.py
 ```
 
-See [SECURITY_DEMO.md](./SECURITY_DEMO.md) for scope and limitations. The demonstration uses only fictional bytes and ephemeral in-memory keys; it is not production security or a claim that the credit simulator encrypts data at rest.
+See [SECURITY_DEMO.md](./SECURITY_DEMO.md) for scope and limitations. The demonstration uses only fictional bytes and ephemeral in-memory keys; signatures do not encrypt data or prove that signed claims are true. This is not production security or a claim that the credit simulator encrypts data at rest.
 
 ## Example result
 
-With `--n 1000 --seed 42`, the 300-record test split produced logistic-regression ROC AUC `0.822` and Brier score `0.153`; the MLP produced ROC AUC `0.806` and Brier score `0.162` at the randomized historical rates. For this seed and synthetic generator, the simpler logistic baseline scored better on both reported metrics. The fixed-rate policy issued 90 offers, routed 48 applications to human review, and had simulated expected contribution of `28.7` thousand units. The risk-aware policy issued 123 offers, routed 12 to review, and had simulated expected contribution of `38.2` thousand units.
+With `--n 1000 --seed 42`, the 300-record test split produced the following **synthetic** metrics at randomized historical rates:
 
-In the separate randomized experiment, assignment to a 24% rather than 12% offer produced an acceptance-rate ITT estimate of `-38.0` percentage points (bootstrap 95% CI: `-48.0` to `-28.7` points); the known simulator finite-population effect was `-34.0` points. The contribution difference was `-0.498` thousand units per offer (95% CI: `-1.361` to `0.316`), which includes zero. At assumed recovery rates of 20%, 40%, and 60%, the risk-aware policy's expected contribution was `25.8`, `42.9`, and `73.9` thousand synthetic units, respectively. These results demonstrate analysis of the specified simulator, not effects, recovery performance, profitability, fairness, affordability, or safety in a real portfolio.
+| Model | ROC AUC | Brier score |
+|---|---:|---:|
+| Logistic regression | 0.822 | 0.153 |
+| MLP neural network | 0.806 | 0.162 |
+
+For this seed and synthetic generator, the simpler logistic baseline scored better on both reported metrics. These values are illustrative and should be regenerated with the current code before being used in a presentation.
+
+The separate randomized experiment and recovery sensitivity are also simulations. They demonstrate analysis of the specified simulator, not effects, recovery performance, profitability, fairness, affordability, or safety in a real portfolio.
+
+## Decision audit in SQLite
+
+The CLI stores the synthetic `decision_audit` table locally. Example queries:
+
+```sql
+-- Decision counts and exception rate
+SELECT decision, COUNT(*) AS applications
+FROM decision_audit
+GROUP BY decision
+ORDER BY applications DESC;
+
+-- Average predicted risk by decision reason
+SELECT reason_code,
+       COUNT(*) AS applications,
+       AVG(predicted_default_probability) AS mean_predicted_risk
+FROM decision_audit
+GROUP BY reason_code
+ORDER BY applications DESC;
+
+-- Review volume and cost by policy version
+SELECT policy_version,
+       SUM(CASE WHEN decision = 'human_review' THEN 1 ELSE 0 END) AS reviews,
+       SUM(human_review_cost_k) AS review_cost_k
+FROM decision_audit
+GROUP BY policy_version;
+
+-- Net modeled contribution of reviewed cases
+SELECT application_id, reason_code, expected_profit_k,
+       human_review_cost_k, expected_net_contribution_k
+FROM decision_audit
+WHERE decision = 'human_review'
+ORDER BY expected_net_contribution_k DESC
+LIMIT 20;
+```
+
+The review objective uses illustrative synthetic currency units (`_k`). Capacity and cost are configurable assumptions, not measured staffing data. The tree is a routing surrogate, not a replacement credit model; its loss estimate treats bypassed exceptions as lost expected contribution and is not observed or causal.
 
 ## Assumptions and formulas
 

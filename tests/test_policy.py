@@ -32,7 +32,7 @@ def test_policies_return_auditable_decision_fields(trained_model):
             {"approve", "counteroffer", "decline", "human_review"}
         )
         assert decisions["reason_code"].notna().all()
-        assert decisions["policy_version"].eq("synthetic-policy-v1").all()
+        assert decisions["policy_version"].eq("synthetic-policy-v2").all()
         assert decisions.loc[
             decisions["decision"] != "human_review",
             "predicted_default_probability",

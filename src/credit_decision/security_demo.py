@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -26,6 +27,41 @@ def generate_rsa_key_pair() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
         key_size=2048,
     )
     return private_key, private_key.public_key()
+
+
+def sign_message(message: bytes, private_key: rsa.RSAPrivateKey) -> bytes:
+    """Sign bytes with RSA-PSS/SHA-256 for the educational demo."""
+    if not isinstance(message, bytes):
+        raise TypeError("message must be bytes.")
+    return private_key.sign(
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH,
+        ),
+        hashes.SHA256(),
+    )
+
+
+def verify_message(
+    message: bytes,
+    signature: bytes,
+    public_key: rsa.RSAPublicKey,
+) -> None:
+    """Verify RSA-PSS/SHA-256; invalid signatures raise InvalidSignature."""
+    if not isinstance(message, bytes):
+        raise TypeError("message must be bytes.")
+    if not isinstance(signature, bytes):
+        raise TypeError("signature must be bytes.")
+    public_key.verify(
+        signature,
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH,
+        ),
+        hashes.SHA256(),
+    )
 
 
 def encrypt_payload(

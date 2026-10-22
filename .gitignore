@@ -5,3 +5,4 @@ __pycache__/
 *.egg-info/
 reports/*.csv
 reports/*.json
+reports/*.sqlite

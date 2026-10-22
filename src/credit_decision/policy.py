@@ -8,7 +8,7 @@ import pandas as pd
 from .data import RATE_GRID, synthetic_acceptance_probability
 from .model import DefaultRiskModel
 
-POLICY_VERSION = "synthetic-policy-v1"
+POLICY_VERSION = "synthetic-policy-v2"
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,8 @@ class PolicyConfig:
 
     risk_limit: float = 0.24
     human_review_band: float = 0.025
+    human_review_capacity_fraction: float = 0.08
+    human_review_cost_k: float = 0.10
     maximum_automatic_dti: float = 0.58
     funding_rate: float = 0.06
     loss_given_default: float = 0.65
@@ -28,6 +30,10 @@ class PolicyConfig:
             raise ValueError("risk_limit must be between 0 and 1.")
         if not 0 <= self.human_review_band < self.risk_limit:
             raise ValueError("human_review_band must be non-negative and below risk_limit.")
+        if not 0 <= self.human_review_capacity_fraction <= 1:
+            raise ValueError("human_review_capacity_fraction must be in [0, 1].")
+        if not np.isfinite(self.human_review_cost_k) or self.human_review_cost_k < 0:
+            raise ValueError("human_review_cost_k must be finite and non-negative.")
         if not 0 < self.maximum_automatic_dti <= 1:
             raise ValueError("maximum_automatic_dti must be in (0, 1].")
         if not 0 <= self.funding_rate < 1:

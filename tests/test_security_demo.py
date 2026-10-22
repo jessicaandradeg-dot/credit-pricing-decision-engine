@@ -1,10 +1,12 @@
 import pytest
-from cryptography.exceptions import InvalidTag
+from cryptography.exceptions import InvalidSignature, InvalidTag
 
 from credit_decision.security_demo import (
     decrypt_payload,
     encrypt_payload,
     generate_rsa_key_pair,
+    sign_message,
+    verify_message,
 )
 
 
@@ -37,3 +39,14 @@ def test_encryption_rejects_non_bytes_payload():
 
     with pytest.raises(TypeError, match="must be bytes"):
         encrypt_payload("not bytes", public_key)
+
+
+def test_rsa_pss_signature_verifies_and_rejects_tampering():
+    private_key, public_key = generate_rsa_key_pair()
+    message = b'{"agent":"synthetic-buyer","offer":75}'
+
+    signature = sign_message(message, private_key)
+
+    assert verify_message(message, signature, public_key) is None
+    with pytest.raises(InvalidSignature):
+        verify_message(message + b"!", signature, public_key)

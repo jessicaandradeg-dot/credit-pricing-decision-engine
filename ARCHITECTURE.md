@@ -23,7 +23,11 @@ Logistic regression prediction at candidate rates
        ↓
 Input safeguards → fixed-rate / risk-aware policy
        ↓
-Reason-coded decisions → synthetic-oracle policy evaluation
+Reason-coded decisions → review-cost objective + capacity constraint
+       ├─ Depth-3 exception surrogate → risk-band and bypass-cost summary
+       └─ SQLite decision audit
+       ↓
+Synthetic-oracle policy evaluation
        ↓
 Recovery-rate assumption sensitivity
        ↓
@@ -41,6 +45,7 @@ The neural network is a comparison model only. The pricing policies continue usi
 | `data.py` | Generate fictional application records and known simulator probabilities. |
 | `model.py` | Validate training/prediction inputs; fit the standardized logistic and MLP estimators. |
 | `policy.py` | Validate decision inputs, apply fixed-rate or risk-aware rules, and attach reasons/version. |
+| `decisionbot.py` | Select review cases by modeled net contribution under a capacity constraint, distill counteroffer/review exceptions with a depth-3 tree, and persist local SQLite audit rows. |
 | `experiment.py` | Split data, fit models, compare held-out classification metrics, evaluate policies with the synthetic oracle, and serialize reports. |
 | `causal_pricing.py` | Randomize a held-out synthetic cohort, simulate assigned-arm outcomes, estimate ITT differences, bootstrap intervals, and compare against the simulator's known finite-population effect. |
 | `security_demo.py` | Demonstrate authenticated symmetric encryption and asymmetric wrapping of a one-time key. |
@@ -60,6 +65,7 @@ Let `n` be the number of applications, `p` the number of model features, `m` the
 - Logistic model training is iterative and depends on `e`, `n`, and `p`; prediction is approximately `O(n p)`.
 - MLP training is approximately `O(e n (p h1 + h1 h2))`; inference is approximately `O(n (p h1 + h1 h2))`.
 - Risk-aware pricing evaluates the model across `m` candidate rates and computes a feasible maximum per application: approximately `O(m n p)` for the logistic model, plus `O(n m)` policy selection.
+- Review routing sorts at most `n` exception cases: `O(n log n)` time and `O(n)` additional space. The depth-limited decision tree is trained on `n` records and `p` features; its implementation-dependent bound is at most `O(p n log^2 n)` for the CART split-search strategy, with linear-depth prediction traversal bounded by the configured tree depth (3 here).
 - The MLP comparison is not called by policy decisions; it adds one training fit and one held-out evaluation.
 - The causal experiment simulates two potential outcomes per application to expose an oracle finite-population effect, but estimates ITT from the independently randomized assigned arms. Bootstrap work is approximately `O(B n)` where `B` is the number of resamples.
 - Recovery sensitivity reruns the policies for a small fixed grid of assumed recovery rates. It changes loss-given-default and is not a fitted model of collection outcomes.

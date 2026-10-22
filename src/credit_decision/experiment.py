@@ -9,6 +9,7 @@ from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from .causal_pricing import run_randomized_pricing_experiment
+from .decisionbot import analyze_exception_layer, route_human_review
 from .data import (
     FEATURES,
     OFFERED_RATE_COLUMN,
@@ -77,6 +78,15 @@ def evaluate_policy(
 
     approved_count = int(accepted_offers.sum())
     total_applications = len(aligned)
+    review_cost = float(
+        pd.to_numeric(
+            actions.get(
+                "human_review_cost_k",
+                pd.Series(0.0, index=actions.index),
+            ),
+            errors="coerce",
+        ).fillna(0.0).sum()
+    )
     return {
         "policy": policy_name,
         "applications": total_applications,
@@ -92,6 +102,8 @@ def evaluate_policy(
             else 0.0
         ),
         "expected_profit_k": expected_profit,
+        "human_review_cost_k": review_cost,
+        "expected_net_contribution_k": expected_profit - review_cost,
         "expected_profit_per_application_k": expected_profit / total_applications,
         "expected_principal_k": expected_principal,
         "expected_loss_rate_on_accepted_principal": (
@@ -126,10 +138,26 @@ def run_experiment(
     model = DefaultRiskModel.fit(train)
     neural_model = NeuralDefaultRiskModel.fit(train)
 
-    decisions_by_policy = {
+    raw_decisions_by_policy = {
         "fixed_rate_baseline": decide_fixed_rate(test, model, config),
         "risk_aware_pricing": decide_risk_aware_pricing(test, model, config),
     }
+    _, risk_band_table, exception_summary = analyze_exception_layer(
+        test,
+        raw_decisions_by_policy["risk_aware_pricing"],
+        review_cost_k=config.human_review_cost_k,
+        random_state=random_state,
+    )
+    decisions_by_policy = {}
+    review_routing_summaries = {}
+    for policy_name, raw_decisions in raw_decisions_by_policy.items():
+        decisions_by_policy[policy_name], review_routing_summaries[policy_name] = (
+            route_human_review(
+                raw_decisions,
+                capacity_fraction=config.human_review_capacity_fraction,
+                review_cost_k=config.human_review_cost_k,
+            )
+        )
     policy_metrics = [
         evaluate_policy(test, decisions, config, name)
         for name, decisions in decisions_by_policy.items()
@@ -240,6 +268,23 @@ def run_experiment(
                 "causal estimates."
             ),
             "results": policy_metrics,
+        },
+        "decisionbot_exception_layer": {
+            "method": (
+                "Depth-3 decision-tree surrogate for counteroffer/human-review "
+                "exceptions, evaluated on a stratified held-out split."
+            ),
+            "review_routing_objective": (
+                "Maximize modeled expected contribution less human-review cost, "
+                "subject to a fixed review-capacity constraint."
+            ),
+            "review_routing": review_routing_summaries,
+            "exception_tree": exception_summary,
+            "risk_band_table": risk_band_table.to_dict(orient="records"),
+            "contribution_loss_definition": (
+                "Counterfactual proxy: modeled contribution is treated as lost "
+                "when a true exception is bypassed; not realized or causal loss."
+            ),
         },
         "recovery_assumption_sensitivity": {
             "method": (
