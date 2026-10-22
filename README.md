@@ -86,10 +86,3 @@ expected contribution = a * P * ((1 - p) * r - p * LGD - f)
 
 The acceptance response and default response to price are intentionally simple synthetic functions. The policy maximizes estimated expected contribution among the configured discrete rates, subject to a risk limit and a positive-contribution condition. Rates, thresholds, loss severity, funding cost, and policy version are explicit in `PolicyConfig`; changing them changes the simulated results.
 
-## Research extensions
-
-- Add uncertainty intervals and sensitivity analysis for price response, loss severity, funding cost, and risk thresholds.
-- Evaluate model calibration and temporal/generalization failure under distribution shift.
-- Compare expected utility against alternate business objectives without obscuring risk constraints.
-- Add a transparent model card, policy-change log, independent review, and an explicit human appeal workflow.
-- Explore uplift or off-policy evaluation only with appropriate experimental design and qualified review; the toy oracle simulation is not a substitute.
